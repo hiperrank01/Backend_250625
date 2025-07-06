@@ -17,6 +17,7 @@ from django.conf import settings
 from django.shortcuts import redirect
 from django.views import View
 from rest_framework.renderers import JSONRenderer
+from django.http import JsonResponse
 
 
 # 회원가입
@@ -48,10 +49,12 @@ class LoginView(APIView):
         if user is not None:
             refresh = RefreshToken.for_user(user)
             return Response({
-                'access': str(refresh.access_token),
+               'access': str(refresh.access_token),
                 'refresh': str(refresh),
-                'nm': user.nm,
-                'mbr_no': user.mbr_no,
+                'user': {
+                    'eml_adr': user.eml_adr,
+                    'nm': user.nm,
+                }
             })
         return Response({"error": "이메일 또는 비밀번호가 틀렸습니다."}, status=401)
 
@@ -151,4 +154,11 @@ class GoogleOAuthCallbackView(View):
         access = str(refresh.access_token)
 
         # 프론트로 리디렉션
-        return redirect(f'https://api.ninewinit.store/user/auth/login/success?token={access}')
+        return JsonResponse({
+        'access': access,
+        'refresh': str(refresh),
+        'user': {
+            'eml_adr': user.eml_adr,
+            'nm': user.nm,
+        }
+})
