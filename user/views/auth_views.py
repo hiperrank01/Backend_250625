@@ -1,8 +1,5 @@
-
 import random
-from django.core.mail import send_mail
 from django.core.mail import EmailMultiAlternatives
-from django.template.loader import render_to_string
 from django.core.cache import cache
 from rest_framework.decorators import api_view
 from rest_framework.views import APIView
@@ -11,43 +8,40 @@ from rest_framework import status
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.views.decorators.csrf import csrf_exempt
-from django.conf import settings
 
 from user.serializers.auth_serializers import AuthSerializer
 from user.models import User
 
 
 # 회원가입
-
 class SignupView(APIView):
     def post(self, request):
-        email = request.data.get('email')
+        email = request.data.get('eml_adr')  # ✅ 필드명 수정!
 
-        # 1️⃣ 이메일 인증 여부 확인
         if not cache.get(email):
             return Response({"error": "이메일 인증이 필요합니다."}, status=400)
 
-        # 2️⃣ 정상 인증된 경우, 회원가입 처리
         serializer = AuthSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "회원가입 성공"}, status=201)
         return Response(serializer.errors, status=400)
 
+
 # 로그인
 class LoginView(APIView):
     def post(self, request):
-        email = request.data.get('email')
+        email = request.data.get('eml_adr')  # ✅ 필드명 수정!
         password = request.data.get('password')
-        user = authenticate(request, email=email, password=password)
+        user = authenticate(request, eml_adr=email, password=password)  # ✅ 키워드도 eml_adr로!
 
         if user is not None:
             refresh = RefreshToken.for_user(user)
             return Response({
                 'access': str(refresh.access_token),
                 'refresh': str(refresh),
-                'username': user.username,
-                'role': user.role,
+                'nm': user.nm,
+                'mbr_no': user.mbr_no,
             })
         return Response({"error": "이메일 또는 비밀번호가 틀렸습니다."}, status=401)
 
@@ -56,7 +50,7 @@ class LoginView(APIView):
 @csrf_exempt
 @api_view(['POST'])
 def send_code(request):
-    email = request.data.get('email')
+    email = request.data.get('eml_adr')  # ✅ 필드명 수정
     code = str(random.randint(100000, 999999))
     cache.set(email, code, timeout=300)
 
@@ -87,11 +81,10 @@ def send_code(request):
     return Response({'message': '코드 전송 완료'})
 
 
-
 # 인증 코드 확인
 @api_view(['POST'])
 def verify_code(request):
-    email = request.data.get('email')
+    email = request.data.get('eml_adr')  # ✅ 필드명 수정
     code = request.data.get('code')
     saved = cache.get(email)
 

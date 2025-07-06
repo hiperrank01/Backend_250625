@@ -113,13 +113,11 @@ AUTH_USER_MODEL = 'user.User'
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us' # 수정필요
-
-TIME_ZONE = 'UTC' # 수정필요
-
-USE_I18N = True
-
-USE_TZ = True
+LANGUAGE_CODE = 'ko-kr'       # 한국어로 변경
+TIME_ZONE = 'Asia/Seoul'      # 한국 시간 (KST)
+USE_I18N = True               # 국제화(i18n) 사용 여부
+USE_L10N = True               # 지역화된 포맷 사용 여부
+USE_TZ = False                 # Django 내부에서 시간대(TZ) 관리
 
 
 import os
@@ -143,6 +141,24 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         }
+    }
+}
+
+SIMPLE_JWT = {
+    'USER_ID_FIELD': 'mbr_no',
+    'USER_ID_CLAIM': 'mbr_no',
+}
+
+from decouple import config
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST'),
+        'PORT': config('DB_PORT'),
     }
 }
 
