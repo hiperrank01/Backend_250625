@@ -2,7 +2,7 @@ from rest_framework import serializers
 from user.models import User
 import uuid
 
-class AuthSerializer(serializers.ModelSerializer):
+class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
 
     class Meta:
@@ -33,3 +33,15 @@ class AuthSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
         return user
+    
+class LoginSerializer(serializers.Serializer):
+    eml_adr = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+
+class EmailCodeSerializer(serializers.Serializer):
+    eml_adr = serializers.EmailField()
+
+class VerifyCodeSerializer(serializers.Serializer):
+    eml_adr = serializers.EmailField()
+    code = serializers.CharField()

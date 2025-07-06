@@ -9,10 +9,9 @@ schema_view = get_schema_view(
     openapi.Info(
         title="Backend 250625 API",
         default_version='v1',
-        description="Email 로그인 + JWT 인증",
     ),
     public=True,
-    permission_classes=[permissions.AllowAny],
+    url="https://api.ninewinit.store",  # 🔥 여기 추가!
 )
 
 urlpatterns = [
