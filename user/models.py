@@ -25,7 +25,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     api_key = models.CharField(max_length=100, blank=True, null=True)
     is_staff = models.BooleanField(default=False)
 
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['nickname']
+    USERNAME_FIELD = 'email' # 로그인 시 사용할 필드
+    REQUIRED_FIELDS = ['username'] # createsuperuser 명령어 시 추가로 입력받을 필드들
 
     objects = UserManager()
