@@ -18,6 +18,13 @@ from django.shortcuts import redirect
 from django.views import View
 from rest_framework.renderers import JSONRenderer
 from django.http import JsonResponse
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+import google.oauth2.id_token
+import google.auth.transport.requests
 
 
 # 회원가입
@@ -28,6 +35,11 @@ class SignupView(APIView):
 
         if not cache.get(email):
             return Response({"error": "이메일 인증이 필요합니다."}, status=400)
+        
+         # 2️⃣ 이미 가입된 회원 체크
+        if User.objects.filter(eml_adr=email).exists():
+            return Response({"error": "이미 가입된 회원입니다."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         serializer = SignupSerializer(data=request.data)
         if serializer.is_valid():
@@ -109,56 +121,51 @@ def verify_code(request):
     else:
         return Response({'message': '인증 실패'}, status=400)
     
-@method_decorator(csrf_exempt, name='dispatch')
-class GoogleOAuthCallbackView(View):
+
+
     
-    def get(self, request):
-        code = request.GET.get('code')
-        if not code:
-            return redirect('https://api.ninewinit.store/user/auth/login?error=no-code')
+@method_decorator(csrf_exempt, name="dispatch")  # POST지만 크로스 사이트 오지 않으므로 빼도 OK
+class GoogleIdTokenVerifyView(APIView):
+    permission_classes = [AllowAny]     # 로그인 전 접근 허용
+    authentication_classes = []         # 세션·JWT 인증 스킵
 
-        # 1. access_token 요청
-        token_url = 'https://oauth2.googleapis.com/token'
-        token_data = {
-            'code': code,
-            'client_id': settings.GOOGLE_CLIENT_ID,
-            'client_secret': settings.GOOGLE_CLIENT_SECRET,
-            'redirect_uri': 'https://api.ninewinit.store/user/auth/google/callback/',
-            'grant_type': 'authorization_code',
-        }
+    def post(self, request):
+        id_token_str = request.data.get("id_token")
+        if not id_token_str:
+            return Response({"error": "id_token 누락"}, status=400)
 
-        token_response = requests.post(token_url, data=token_data)
-        token_json = token_response.json()
+        # 1. id_token 검증 (audience·exp 자동 체크)
+        try:
+            idinfo = google.oauth2.id_token.verify_oauth2_token(
+                id_token_str,
+                google.auth.transport.requests.Request(),
+                settings.GOOGLE_CLIENT_ID,
+            )
+        except ValueError:
+            return Response({"error": "유효하지 않은 id_token"}, status=400)
 
-        access_token = token_json.get('access_token')
-        if not access_token:
-            return redirect('https://api.ninewinit.store/user/auth/login?error=token-failed')
+        # 2. 사용자 정보
+        email = idinfo["email"]
+        name  = idinfo.get("name", "")
 
-        # 2. 사용자 정보 가져오기
-        user_info = requests.get(
-            'https://www.googleapis.com/oauth2/v1/userinfo',
-            params={'access_token': access_token}
-        ).json()
-
-        email = user_info.get('email')
-        name = user_info.get('name')
-
-        # 3. 유저 생성 or 가져오기
+        # 3. DB 저장 / 조회
         user, _ = User.objects.get_or_create(
             eml_adr=email,
-            defaults={'nm': name}
+            defaults={"nm": name}
         )
+
+        # (옵션) 이름이 바뀐 경우 업데이트
+        if user.nm != name:
+            user.nm = name
+            user.save()
 
         # 4. JWT 발급
         refresh = RefreshToken.for_user(user)
-        access = str(refresh.access_token)
-
-        # 프론트로 리디렉션
-        return JsonResponse({
-        'access': access,
-        'refresh': str(refresh),
-        'user': {
-            'eml_adr': user.eml_adr,
-            'nm': user.nm,
-        }
-})
+        return Response(
+            {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {"eml_adr": user.eml_adr, "nm": user.nm},
+            },
+            status=200,
+        )
