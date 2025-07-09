@@ -10,7 +10,7 @@ from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
-from user.serializers.auth_serializers import SignupSerializer, LoginSerializer, EmailCodeSerializer, VerifyCodeSerializer
+from user.serializers.auth_serializers import SignupSerializer, LoginSerializer, EmailCodeSerializer, VerifyCodeSerializer, GoogleIdTokenSerializer
 from user.models import User
 from django.utils.decorators import method_decorator
 from django.conf import settings
@@ -25,6 +25,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import google.oauth2.id_token
 import google.auth.transport.requests
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 
 # 회원가입
@@ -129,6 +131,32 @@ class GoogleIdTokenVerifyView(APIView):
     permission_classes = [AllowAny]     # 로그인 전 접근 허용
     authentication_classes = []         # 세션·JWT 인증 스킵
 
+    @swagger_auto_schema(
+        request_body=GoogleIdTokenSerializer,
+        responses={
+            200: openapi.Response(
+                description="로그인 성공",
+                examples={
+                    "application/json": {
+                        "access": "jwt_access_token",
+                        "refresh": "jwt_refresh_token",
+                        "user": {
+                            "eml_adr": "test@example.com",
+                            "nm": "홍길동"
+                        }
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="잘못된 요청 or id_token 오류",
+                examples={
+                    "application/json": {"error": "id_token 누락"},
+                },
+            ),
+        },
+        operation_description="✅ 구글 ID 토큰을 검증하고 JWT를 발급합니다.",
+        operation_summary="구글 로그인 검증 및 JWT 발급"
+    )
     def post(self, request):
         id_token_str = request.data.get("id_token")
         if not id_token_str:
