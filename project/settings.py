@@ -113,6 +113,9 @@ SWAGGER_SETTINGS = {
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
+NAVER_ID = os.getenv("NAVER_ID")
+NAVER_SECRET = os.getenv("NAVER_SECRET")
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
