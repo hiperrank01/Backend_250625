@@ -66,7 +66,9 @@ class SocialAccount(models.Model):
 
     user     = models.ForeignKey(
         User, related_name="social_accounts",
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
+        null=True,      # ✅
+        blank=True,     # ✅
     )
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
     uid      = models.CharField(max_length=100)           # 네이버 id, 구글 sub 등

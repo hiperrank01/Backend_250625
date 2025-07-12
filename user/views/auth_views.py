@@ -23,11 +23,16 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from django.utils.crypto import get_random_string
 
 import google.oauth2.id_token
 import google.auth.transport.requests
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+
+def tmp_password(length: int = 12) -> str:
+    return get_random_string(length)
 
 
 # 회원가입
@@ -176,36 +181,28 @@ class GoogleIdTokenVerifyView(APIView):
         # 2. 사용자 정보
         email = idinfo["email"]
         name  = idinfo.get("name", "")
-        google_uid = idinfo["sub"]
 
-        # ② SocialAccount 먼저 조회/생성
-        soc, created = SocialAccount.objects.get_or_create(
-            provider="google",
-            uid=google_uid,
-            defaults={"email": email},
+        # 3. DB 저장 / 조회
+        user, _ = User.objects.get_or_create(
+            eml_adr=email,
+            defaults={"nm": name}
         )
 
-        # ③ 이미 연결돼 있으면 그대로, 아니면 User 만들어 연결
-        user = soc.user if hasattr(soc, "user") else None
-        if user is None:
-            user = User.objects.create_user(
-                eml_adr=email,
-                password=User.objects.make_random_password(),  # 더미
-                nm=name or "구글사용자",
-                phn_no="",
-                prv_agr_yn="Y", tos_agr_yn="Y", adv_rcv_yn="N",
-                reg_usr_eml_adr=email, upd_usr_eml_adr=email,
-            )
-            soc.user = user
-            soc.save(update_fields=["user"])
+        # (옵션) 이름이 바뀐 경우 업데이트
+        if user.nm != name:
+            user.nm = name
+            user.save()
 
-        # ④ JWT 발급은 그대로
+        # 4. JWT 발급
         refresh = RefreshToken.for_user(user)
-        return Response({
-            "access":  str(refresh.access_token),
-            "refresh": str(refresh),
-            "user":    {"eml_adr": user.eml_adr, "nm": user.nm},
-        })
+        return Response(
+            {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {"eml_adr": user.eml_adr, "nm": user.nm},
+            },
+            status=200,
+        )
     
 
 NAVER_TOKEN_URL = "https://nid.naver.com/oauth2.0/token"
@@ -269,7 +266,7 @@ class NaverVerifyView(APIView):
         if user is None:
             user = User.objects.create_user(
                 eml_adr=email,
-                password=User.objects.make_random_password(),
+                password=tmp_password(),
                 nm=name,
                 phn_no="",
                 prv_agr_yn="Y", tos_agr_yn="Y", adv_rcv_yn="N",
