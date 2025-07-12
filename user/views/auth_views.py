@@ -10,8 +10,8 @@ from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
-from user.serializers.auth_serializers import SignupSerializer, LoginSerializer, EmailCodeSerializer, VerifyCodeSerializer, NaverCodeSerializer
-from user.models import User
+from user.serializers.auth_serializers import SignupSerializer, LoginSerializer, EmailCodeSerializer, VerifyCodeSerializer, NaverCodeSerializer, GoogleIdTokenSerializer
+from user.models import User, SocialAccount
 from django.utils.decorators import method_decorator
 from django.conf import settings
 from django.shortcuts import redirect
@@ -26,6 +26,8 @@ from django.utils.decorators import method_decorator
 
 import google.oauth2.id_token
 import google.auth.transport.requests
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 
 # 회원가입
@@ -130,6 +132,32 @@ class GoogleIdTokenVerifyView(APIView):
     permission_classes = [AllowAny]     # 로그인 전 접근 허용
     authentication_classes = []         # 세션·JWT 인증 스킵
 
+    @swagger_auto_schema(
+        request_body=GoogleIdTokenSerializer,
+        responses={
+            200: openapi.Response(
+                description="로그인 성공",
+                examples={
+                    "application/json": {
+                        "access": "jwt_access_token",
+                        "refresh": "jwt_refresh_token",
+                        "user": {
+                            "eml_adr": "test@example.com",
+                            "nm": "홍길동"
+                        }
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="잘못된 요청 or id_token 오류",
+                examples={
+                    "application/json": {"error": "id_token 누락"},
+                },
+            ),
+        },
+        operation_description="✅ 구글 ID 토큰을 검증하고 JWT를 발급합니다.",
+        operation_summary="구글 로그인 검증 및 JWT 발급"
+    )
     def post(self, request):
         id_token_str = request.data.get("id_token")
         if not id_token_str:
@@ -148,28 +176,36 @@ class GoogleIdTokenVerifyView(APIView):
         # 2. 사용자 정보
         email = idinfo["email"]
         name  = idinfo.get("name", "")
+        google_uid = idinfo["sub"]
 
-        # 3. DB 저장 / 조회
-        user, _ = User.objects.get_or_create(
-            eml_adr=email,
-            defaults={"nm": name}
+        # ② SocialAccount 먼저 조회/생성
+        soc, created = SocialAccount.objects.get_or_create(
+            provider="google",
+            uid=google_uid,
+            defaults={"email": email},
         )
 
-        # (옵션) 이름이 바뀐 경우 업데이트
-        if user.nm != name:
-            user.nm = name
-            user.save()
+        # ③ 이미 연결돼 있으면 그대로, 아니면 User 만들어 연결
+        user = soc.user if hasattr(soc, "user") else None
+        if user is None:
+            user = User.objects.create_user(
+                eml_adr=email,
+                password=User.objects.make_random_password(),  # 더미
+                nm=name or "구글사용자",
+                phn_no="",
+                prv_agr_yn="Y", tos_agr_yn="Y", adv_rcv_yn="N",
+                reg_usr_eml_adr=email, upd_usr_eml_adr=email,
+            )
+            soc.user = user
+            soc.save(update_fields=["user"])
 
-        # 4. JWT 발급
+        # ④ JWT 발급은 그대로
         refresh = RefreshToken.for_user(user)
-        return Response(
-            {
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-                "user": {"eml_adr": user.eml_adr, "nm": user.nm},
-            },
-            status=200,
-        )
+        return Response({
+            "access":  str(refresh.access_token),
+            "refresh": str(refresh),
+            "user":    {"eml_adr": user.eml_adr, "nm": user.nm},
+        })
     
 
 NAVER_TOKEN_URL = "https://nid.naver.com/oauth2.0/token"
@@ -218,29 +254,33 @@ class NaverVerifyView(APIView):
             return Response({"error": "프로필 조회 실패"}, status=400)
 
         data  = prof["response"]
-        uid   = data["id"]
-        email = data.get("email", f"{uid}@naver.local")   # 이메일 없을 때 대비
-        name  = data.get("name", "")
+        uid   = data["id"]                     # 네이버 UID
+        email = data.get("email") or f"{uid}@naver.local"
+        name  = data.get("name", "네이버사용자")
 
-        # 3) 유저 저장/조회  (eml_adr, nm 컬럼에 맞춰!!)
-        user, _ = User.objects.get_or_create(
-            naver_id = uid,                       # 👈 User 모델에 naver_id 필드 필요
-            defaults = {"eml_adr": email, "nm": name},
+        # ────────── SocialAccount 로직 동일 ──────────
+        soc, _ = SocialAccount.objects.get_or_create(
+            provider="naver",
+            uid=uid,
+            defaults={"email": email},
         )
-        if user.nm != name:      # 이름 변경 반영
-            user.nm = name
-            user.save(update_fields=["nm"])
 
-        # 4) JWT 발급 (구글과 동일 구조)
+        user = soc.user if hasattr(soc, "user") else None
+        if user is None:
+            user = User.objects.create_user(
+                eml_adr=email,
+                password=User.objects.make_random_password(),
+                nm=name,
+                phn_no="",
+                prv_agr_yn="Y", tos_agr_yn="Y", adv_rcv_yn="N",
+                reg_usr_eml_adr=email, upd_usr_eml_adr=email,
+            )
+            soc.user = user
+            soc.save(update_fields=["user"])
+
         refresh = RefreshToken.for_user(user)
-        return Response(
-            {
-                "access":  str(refresh.access_token),
-                "refresh": str(refresh),
-                "user": {
-                    "eml_adr": user.eml_adr,
-                    "nm":      user.nm,
-                },
-            },
-            status=200,
-        )
+        return Response({
+            "access":  str(refresh.access_token),
+            "refresh": str(refresh),
+            "user":    {"eml_adr": user.eml_adr, "nm": user.nm},
+        })

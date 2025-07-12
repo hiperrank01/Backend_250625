@@ -54,3 +54,27 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = ['nm', 'phn_no']  # createsuperuser 때 추가 입력받을 필드
     
     objects = UserManager()
+
+
+class SocialAccount(models.Model):
+    PROVIDER_CHOICES = [
+        ("naver",  "Naver"),
+        ("google", "Google"),
+        ("kakao",  "Kakao"),
+        ("apple",  "Apple"),
+    ]
+
+    user     = models.ForeignKey(
+        User, related_name="social_accounts",
+        on_delete=models.CASCADE
+    )
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
+    uid      = models.CharField(max_length=100)           # 네이버 id, 구글 sub 등
+    email    = models.EmailField(null=True, blank=True)
+    extra    = models.JSONField(null=True, blank=True)    # 프로필 raw 저장
+
+    class Meta:
+        unique_together = ("provider", "uid")             # 동일 계정 중복 방지
+
+    def __str__(self):
+        return f"{self.provider}:{self.uid} → {self.user.eml_adr}"

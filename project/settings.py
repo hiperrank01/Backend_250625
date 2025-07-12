@@ -41,11 +41,11 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'user',
     'drf_yasg',
-    'corsheaders',
+    'corsheaders'
 ]
 
 MIDDLEWARE = [
-     'corsheaders.middleware.CorsMiddleware',  # 가장 위에 넣는 게 좋다
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -55,10 +55,18 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+CORS_ALLOW_CREDENTIALS = True
+
 CORS_ALLOWED_ORIGINS = [
     "https://api.ninewinit.store",  # 실제 API 서버
     "https://ninewinit.store",       # 실제 웹 서버
     "http://localhost:3000",  # 로컬 개발 환경
+]
+
+CORS_ALLOW_HEADERS = [
+    'authorization',
+    'content-type',
+    # 필요하면 더 추가
 ]
 
 ROOT_URLCONF = 'project.urls'

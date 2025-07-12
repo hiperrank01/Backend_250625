@@ -46,7 +46,8 @@ class VerifyCodeSerializer(serializers.Serializer):
     eml_adr = serializers.EmailField()
     code = serializers.CharField()
 
-
+class GoogleIdTokenSerializer(serializers.Serializer):
+    id_token = serializers.CharField(help_text="Google에서 받은 ID 토큰", required=True)
 
 class NaverCodeSerializer(serializers.Serializer):
     code  = serializers.CharField(help_text="Naver OAuth code")
