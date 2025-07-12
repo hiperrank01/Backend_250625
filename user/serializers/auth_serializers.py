@@ -45,3 +45,9 @@ class EmailCodeSerializer(serializers.Serializer):
 class VerifyCodeSerializer(serializers.Serializer):
     eml_adr = serializers.EmailField()
     code = serializers.CharField()
+
+
+
+class NaverCodeSerializer(serializers.Serializer):
+    code  = serializers.CharField(help_text="Naver OAuth code")
+    state = serializers.CharField(help_text="CSRF 난수 state")

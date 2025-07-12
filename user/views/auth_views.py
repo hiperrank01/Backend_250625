@@ -10,7 +10,7 @@ from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.views.decorators.csrf import csrf_exempt
 from drf_yasg.utils import swagger_auto_schema
-from user.serializers.auth_serializers import SignupSerializer, LoginSerializer, EmailCodeSerializer, VerifyCodeSerializer
+from user.serializers.auth_serializers import SignupSerializer, LoginSerializer, EmailCodeSerializer, VerifyCodeSerializer, NaverCodeSerializer
 from user.models import User
 from django.utils.decorators import method_decorator
 from django.conf import settings
@@ -23,6 +23,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+
 import google.oauth2.id_token
 import google.auth.transport.requests
 
@@ -166,6 +167,80 @@ class GoogleIdTokenVerifyView(APIView):
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
                 "user": {"eml_adr": user.eml_adr, "nm": user.nm},
+            },
+            status=200,
+        )
+    
+
+NAVER_TOKEN_URL = "https://nid.naver.com/oauth2.0/token"
+NAVER_PROFILE_URL = "https://openapi.naver.com/v1/nid/me"
+
+class NaverVerifyView(APIView):
+    permission_classes = []
+    authentication_classes = []
+
+    @swagger_auto_schema(
+            operation_id="Naver 소셜 로그인",
+            operation_description="Naver OAuth code/state를 exchange → 프로필 조회 후 JWT 발급.",
+            request_body=NaverCodeSerializer,
+            tags=["Auth – Social"],
+        )
+    def post(self, request):
+        code  = request.data.get("code")
+        state = request.data.get("state")
+        if not code or not state:
+            return Response({"error": "code/state 누락"}, status=400)
+
+        # 1) access_token 교환
+        token_res = requests.post(
+            NAVER_TOKEN_URL,
+            params={
+                "grant_type":    "authorization_code",
+                "client_id":     settings.NAVER_ID,
+                "client_secret": settings.NAVER_SECRET,
+                "code":          code,
+                "state":         state,
+            },
+            timeout=5,
+        ).json()
+        access_token = token_res.get("access_token")
+        if not access_token:
+            return Response({"error": "token 교환 실패"}, status=400)
+
+        # 2) 프로필 조회
+        prof = requests.get(
+            NAVER_PROFILE_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=5,
+        ).json()
+
+        if prof.get("resultcode") != "00":
+            return Response({"error": "프로필 조회 실패"}, status=400)
+
+        data  = prof["response"]
+        uid   = data["id"]
+        email = data.get("email", f"{uid}@naver.local")   # 이메일 없을 때 대비
+        name  = data.get("name", "")
+
+        # 3) 유저 저장/조회  (eml_adr, nm 컬럼에 맞춰!!)
+        user, _ = User.objects.get_or_create(
+            naver_id = uid,                       # 👈 User 모델에 naver_id 필드 필요
+            defaults = {"eml_adr": email, "nm": name},
+        )
+        if user.nm != name:      # 이름 변경 반영
+            user.nm = name
+            user.save(update_fields=["nm"])
+
+        # 4) JWT 발급 (구글과 동일 구조)
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "access":  str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {
+                    "eml_adr": user.eml_adr,
+                    "nm":      user.nm,
+                },
             },
             status=200,
         )
